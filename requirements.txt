@@ -1,0 +1,6 @@
+ollama
+streamlit
+yfinance
+pandas
+mysqlclient
+python-dotenv
