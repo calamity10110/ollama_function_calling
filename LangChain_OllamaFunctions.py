@@ -3,17 +3,18 @@ import json
 from langchain_experimental.llms.ollama_functions import OllamaFunctions
 from langchain_core.runnables import RunnableLambda
 from datetime import datetime
+import requests
+import json
+import sys
+import yfinance as yf
 
-model=OllamaFunctions(model="l3custom", format="json")
-
-def get_stock_price(stock_ticker: str) -> float:
-    current_price = stock_info.get_live_price(stock_ticker)
-    print("The current price is ", "$", round(current_price, 2))
-
-def create_meeting(attendee, time):
-    time = datetime.strptime(time, "%Y-%m-%dT%H:%M:%S")
-    print(f"Scheduled a meeting with {attendee} on {time}")
-
+company_name = input("""
+                     Enter the Company Name to get the stock price:
+                     """)
+try:
+    model=OllamaFunctions(model="l3custom", format="json")
+else:
+    model=OllamaFunction(model="llama3.1:latest", format="jason")
 model = model.bind_tools(
     tools = [
         { 
@@ -55,11 +56,19 @@ model = model.bind_tools(
 
 )
 
+def get_stock_price(stock_ticker: str) -> float:
+    current_price = stock_info.get_live_price(stock_ticker)
+    print("The current price is ", "$", round(current_price, 2))
+
+def create_meeting(attendee, time):
+    time = datetime.strptime(time, "%Y-%m-%dT%H:%M:%S")
+    print(f"Scheduled a meeting with {attendee} on {time}")
 functions = {
     "get_stock_price": get_stock_price,
     "create_meeting": create_meeting,
 }
-
+response = requests.post("http://localhost:11434/api/chat", json=payload)
+company_info = json.loads(response.json()["message"]["content"])
 
 def invoke_and_run(model, invoke_arg):
     result = model.invoke(invoke_arg)
@@ -89,6 +98,46 @@ def invoke_and_run(model, invoke_arg):
                 elif not isinstance(arguments['time'], str):
                     raise ValueError("The 'time' value must be a string")
             function(**arguments)
+schema = {
+    "company" : {
+           "type": "string",
+            "description": "Name of the company"
+        },
+    "ticker": {
+        "type":"string",
+        "description": "Ticker symbol of the company"
+    }
+}
 
-invoke_and_run(model, "What is the current stock price of Apple (AAPL)?")
-invoke_and_run(model, f"Today is {datetime.now()}. Schedule a meeting with John at 3:00PM tomorrow")
+payload = {
+    "model": ""llama3.1:latest",
+    "messages": [
+        {
+            "role": "system",
+            "content": f"You are a helpful AI assistant. The user will enter a company name and the assistant will return the ticker symbol and current stock price of the company. Output in JSON using the schema defined here: {json.dumps(schema)}."
+        },
+        # add some training
+        {"role": "user", "content": "Apple"},
+        {"role": "assistant", "content": json.dumps({"company": "Apple", "ticker": "AAPL"})},  # Example static data
+        # fire the zero shot
+        {"role": "user", "content": company_name}
+    ],
+    "format": "json",
+    "stream": False
+}
+
+# Fetch the current stock price using yfinance
+ticker_symbol = company_info['ticker']
+stock = yf.Ticker(ticker_symbol)
+hist = stock.history(period="1d")
+stock_price = hist['Close'].iloc[-1]
+
+
+print(f"The current stock price of {company_info['company']} ({ticker_symbol}) is USD {stock_price}.")
+invoke_and_run(model, "analyse the current stock price of company provided?")
+invoke_and_run(model, f"Today is {datetime.now()}. Schedule a meeting at 3:00PM tomorrow and prepare presentation material regarding the company stock price")
+
+
+--------------------------------------------------------
+
+
